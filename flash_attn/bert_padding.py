@@ -10,6 +10,7 @@ class IndexFirstAxis(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, input, indices):
+        indices = torch.clone(indices.detach())
         ctx.save_for_backward(indices)
         assert input.ndim >= 2
         ctx.first_axis_dim, other_shape = input.shape[0], input.shape[1:]
@@ -40,6 +41,7 @@ class IndexPutFirstAxis(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, values, indices, first_axis_dim):
+        indices = torch.clone(indices.detach())
         ctx.save_for_backward(indices)
         assert indices.ndim == 1
         assert values.ndim >= 2
@@ -66,6 +68,7 @@ class IndexFirstAxisResidual(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, input, indices):
+        indices = torch.clone(indices.detach())
         ctx.save_for_backward(indices)
         assert input.ndim >= 2
         ctx.first_axis_dim, other_shape = input.shape[0], input.shape[1:]
@@ -113,8 +116,12 @@ def unpad_input(hidden_states, attention_mask):
     # times larger than it needs to be, wasting memory. It's faster and more memory-efficient to
     # index with integer indices. Moreover, torch's index is a bit slower than it needs to be,
     # so we write custom forward and backward to make it a bit faster.
-    return (index_first_axis(rearrange(hidden_states, 'b s ... -> (b s) ...'), indices), indices,
-            cu_seqlens, max_seqlen_in_batch)
+    b = hidden_states.shape[0]
+    s = hidden_states.shape[1]
+    other_shape = hidden_states.shape[2:]
+    return (index_first_axis(hidden_states.view(b*s, *other_shape), indices), indices, cu_seqlens, max_seqlen_in_batch)
+    #return (index_first_axis(rearrange(hidden_states, 'b s ... -> (b s) ...'), indices), indices,
+    #        cu_seqlens, max_seqlen_in_batch)
 
 
 def pad_input(hidden_states, indices, batch, seqlen):
@@ -129,4 +136,7 @@ def pad_input(hidden_states, indices, batch, seqlen):
     # output = torch.zeros((batch * seqlen), dim, device=hidden_states.device, dtype=hidden_states.dtype)
     # output[indices] = hidden_states
     output = index_put_first_axis(hidden_states, indices, batch * seqlen)
-    return rearrange(output, '(b s) ... -> b s ...', b=batch)
+    other_shape = output.shape[1:]
+    first_dim = output.shape[0]
+    return output.view(batch, first_dim//batch, *other_shape)
+    #return rearrange(output, '(b s) ... -> b s ...', b=batch)

@@ -51,6 +51,8 @@ class FlashAttnQKVPackedFunc(torch.autograd.Function):
             max_seqlen, max_seqlen, dropout_p, softmax_scale, causal=causal,
             return_softmax=return_softmax
         )
+        qkv = torch.clone(qkv.detach())
+        cu_seqlens = torch.clone(cu_seqlens.detach())
         ctx.save_for_backward(qkv, out, softmax_lse, cu_seqlens, rng_state)
         ctx.dropout_p = dropout_p
         ctx.max_seqlen = max_seqlen
